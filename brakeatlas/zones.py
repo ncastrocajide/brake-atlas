@@ -1,20 +1,18 @@
 """Braking-zone extraction: turn one lap into a list of braking events.
 
 A braking zone starts where the brake channel rises above a threshold
-and ends at the speed minimum that braking leads to. Everything is
-measured on the canonical distance grid of an apextrace Lap, so zones
-from different drivers on the same track can be lined up metre by metre.
+and ends at the speed minimum that braking leads to. Distances are on
+the apextrace Lap grid, so zones from different drivers on the same
+track can be compared directly.
 
-Deceleration comes from the speed trace, not from the brake channel:
-on a distance grid a = v * dv/ds, which needs no time derivative. F1
-timing data has a near on/off brake signal, so the speed trace is the
-only measure of how hard a driver brakes. No smoothing is applied here;
-any smoothing must be declared by the caller, never hidden inside
-detection (the same house rule as apextrace.corners).
+Deceleration is computed from speed as a = v * dv/ds. The F1 brake
+channel is on/off, so it says when a driver brakes but not how hard.
+No smoothing is applied; if a caller smooths, it should say so (same
+rule as apextrace.corners).
 
-Sampling caveat: FastF1 car data arrives every ~0.2-0.27 s, which is up
-to ~20 m at 300 km/h. Brake points are therefore located to within one
-raw sample; the 5 m grid does not add information it never had.
+FastF1 car data arrives every 0.2-0.27 s, up to ~20 m at 300 km/h.
+A brake point is only known to within one raw sample, whatever the
+grid step.
 """
 
 from dataclasses import asdict, dataclass
@@ -31,12 +29,12 @@ class BrakeZone:
     """One braking event. Distances in metres from the line.
 
     coast_before is the distance travelled off throttle and off brake
-    right before the brake point: lift-and-coast, the signature of
-    energy management (harvesting) or fuel saving.
+    right before the brake point (lift and coast, usually for energy
+    harvesting or fuel saving).
     release_offset is release_point - min_speed_point: negative means
     the brake came off before the speed minimum (the car rolls to the
-    apex), near zero means braking all the way down, which on an on/off
-    signal is the closest proxy for trail braking.
+    apex), near zero means braking all the way down. Without brake
+    pressure or steering this is a rough stand-in for trail braking.
     """
 
     number: int  # 1-based, in track order
@@ -152,9 +150,8 @@ def detect_brake_zones(
 def zones_to_frame(zones: list[BrakeZone], **tags: object) -> pd.DataFrame:
     """Tidy table of zones, one row each, with constant tag columns.
 
-    Tags carry the context the zone itself does not know (driver, team,
-    track, session, lap), so tables from many laps can be concatenated
-    into one field-wide dataset.
+    Tags add context the zone does not carry (driver, team, track,
+    session, lap) so tables from many laps can be concatenated.
     """
     frame = pd.DataFrame([asdict(z) for z in zones])
     for key, value in tags.items():
