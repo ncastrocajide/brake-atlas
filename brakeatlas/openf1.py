@@ -61,6 +61,11 @@ class OpenF1:
                 if err.code != 429 or attempt == 4:
                     raise
                 time.sleep(2.0 * 2**attempt)
+            except (urllib.error.URLError, ConnectionError, TimeoutError):
+                # Dropped connections happen on long runs; retry the same way.
+                if attempt == 4:
+                    raise
+                time.sleep(2.0 * 2**attempt)
         time.sleep(self.pause)
         path.write_text(json.dumps(data))
         return data

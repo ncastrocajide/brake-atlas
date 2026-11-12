@@ -67,19 +67,27 @@ def main(year: int = 2026) -> None:
 
     # 3. Season index with intervals
     fig, ax, index = plots.driver_index(zones, teams)
-    top, bottom = index.iloc[-1], index.iloc[0]
+    top2 = {teams[d] for d in index["driver"].iloc[-2:]}
+    bottom2 = {teams[d] for d in index["driver"].iloc[:2]}
+    title = (
+        f"Both {top2.pop()} drivers brake latest, both {bottom2.pop()} drivers earliest"
+        if len(top2) == 1 and len(bottom2) == 1
+        else f"{index['driver'].iloc[-1]} brakes latest, "
+        f"{index['driver'].iloc[0]} earliest"
+    )
     style.headline(
         ax,
-        f"{top['driver']} brakes latest over the season, {bottom['driver']} earliest",
+        title,
         "Median over all heavy braking zones, corrected for entry speed, with "
         "95 % bootstrap interval.",
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"season_{year}_index.png")
 
-    # 4. Does it pay?
+    # 4. Pace
     pace = (
-        zones.drop_duplicates(["session", "driver"])
+        plots.regulars(zones)
+        .drop_duplicates(["session", "driver"])
         .assign(
             gap_pct=lambda d: (
                 d["gap_to_pole"] / (d["lap_time"] - d["gap_to_pole"]) * 100
@@ -92,13 +100,44 @@ def main(year: int = 2026) -> None:
     rho, p = spearmanr(joined["med"], joined["pace"])
     style.headline(
         ax,
-        "Braking late and qualifying fast are "
-        + ("related" if p < 0.05 else "barely related"),
-        f"Spearman rho = {-rho:+.2f} between late braking and pace (p = {p:.2f}, "
-        f"{len(joined)} drivers). Grey bars: 95 % interval.",
+        "Faster cars brake later",
+        f"Spearman rho = {-rho:+.2f} between late braking and qualifying pace "
+        f"({len(joined)} drivers). Teammates sit side by side: the car sets the "
+        "brake point more than the driver.",
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"season_{year}_pace.png")
+
+    # 5. Teammates, paired on the same corner and session
+    pairs = plots.teammate_pairs(zones)
+    fig, ax = plots.teammates(pairs)
+    clear = pairs[(pairs["lo"] > 0) | (pairs["hi"] < 0)]
+    style.headline(
+        ax,
+        "Teammates brake within a couple of metres of each other"
+        + (
+            f", except {', '.join(clear['b'] + ' vs ' + clear['a'])}"
+            if len(clear)
+            else ""
+        ),
+        "Median difference over corners both drove in the same session, 95 % "
+        "bootstrap interval. Shaded: ±2 m.",
+    )
+    style.source_note(fig, SOURCE)
+    style.save(fig, DOCS / f"season_{year}_teammates.png")
+
+    # 6. Lift and coast through the season
+    fig, ax, share = plots.coast_by_round(zones, order)
+    first = share.iloc[:3]
+    style.headline(
+        ax,
+        "Lift and coast in qualifying: common in the first rounds, then gone",
+        f"{first.max():.0f} % of heavy stops at {first.idxmax()} followed 40 m or more "
+        "of coasting, under 3 % from Miami on. Shorter coasts are below what 4 Hz data "
+        "can resolve.",
+    )
+    style.source_note(fig, SOURCE)
+    style.save(fig, DOCS / f"season_{year}_coast.png")
 
     # Numbers for the write-up
     pd.set_option("display.width", 200)
@@ -106,15 +145,18 @@ def main(year: int = 2026) -> None:
     print(index.assign(team=index["driver"].map(teams)).round(1).to_string(index=False))
     print(f"\nSpearman late braking vs pace: rho={-rho:+.2f} p={p:.3f}")
 
-    mates = index.assign(team=index["driver"].map(teams)).groupby("team")
-    print("\nTeammate gaps [m]:")
-    for team, g in mates:
-        if len(g) == 2:
-            g = g.sort_values("med")
-            print(
-                f"  {team:18s} {g.iloc[1]['driver']} later than "
-                f"{g.iloc[0]['driver']} by {g.iloc[1]['med'] - g.iloc[0]['med']:.1f}"
-            )
+    print("\nTeammates, paired [m]:")
+    print(pairs.round(1).to_string(index=False))
+    drivers = heavy.groupby(["team", "driver"])[plots.METRIC].median().reset_index()
+    drivers = drivers[drivers["driver"].isin(index["driver"])]
+    team_mean = drivers.groupby("team")[plots.METRIC].transform("mean")
+    within = ((drivers[plots.METRIC] - team_mean) ** 2).sum() / (
+        len(drivers) - drivers["team"].nunique()
+    )
+    print(
+        f"Variance of driver medians: between teams {team_mean.var():.1f}, "
+        f"within teams {within:.1f} m^2"
+    )
 
     print("\nTrack braking demand:")
     demand = (
@@ -129,11 +171,24 @@ def main(year: int = 2026) -> None:
     )
     print(demand.round(1).to_string())
 
-    print("\nCoasting before braking, median per team [m] (share of zones > 0):")
-    coast = heavy.groupby("team")["coast_before"].agg(
-        median="median", share=lambda s: (s > 0).mean()
+    print("\nLift and coast >= 40 m before a heavy stop, share of zones:")
+    coast = heavy.assign(coast=heavy["coast_before"] >= 40.0)
+    print(
+        coast.groupby("team")["coast"]
+        .mean()
+        .sort_values(ascending=False)
+        .round(3)
+        .to_string()
     )
-    print(coast.sort_values("share", ascending=False).round(2).to_string())
+    print(
+        coast.groupby("track")["coast"]
+        .mean()
+        .sort_values(ascending=False)
+        .head(6)
+        .round(3)
+        .to_string()
+    )
+    print(f"overall {coast['coast'].mean():.3f}")
 
     print("\nPeak deceleration vs entry speed (field medians by band):")
     bands = pd.cut(heavy["entry_speed"], [0, 200, 250, 300, 400])

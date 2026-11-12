@@ -102,3 +102,16 @@ def test_entry_speed_correction_removes_slow_car_advantage():
     out = field_deltas(frame)
     assert out["bp_delta_m"].abs().max() > 5.0  # raw delta sees a spread
     assert out["bp_resid_m"].abs().max() < 1e-6  # corrected delta does not
+
+
+def test_lift_and_brake_in_one_raw_interval_is_not_coasting(grid, make_lap):
+    # 4 Hz data interpolated onto the grid: throttle falls and brake
+    # rises across the same 20 m raw interval. That is a straight swap
+    # from throttle to brake, not coasting.
+    lap = single_stop(grid, make_lap, coast=0.0)
+    ramp = (grid >= BRAKE_AT - 10.0) & (grid <= BRAKE_AT + 10.0)
+    frac = (grid[ramp] - (BRAKE_AT - 10.0)) / 20.0
+    lap.data.loc[ramp, "Throttle"] = 100.0 * (1.0 - frac)
+    lap.data.loc[ramp, "Brake"] = 100.0 * frac
+    z = detect_brake_zones(lap)[0]
+    assert z.coast_before == 0.0

@@ -63,7 +63,7 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
 def detect_brake_zones(
     lap: Lap,
     brake_threshold: float = 50.0,
-    throttle_threshold: float = 95.0,
+    throttle_threshold: float = 50.0,
     merge_gap: float = 20.0,
     min_speed_drop: float = 10.0,
     rise_tol: float = 2.0,
@@ -76,7 +76,9 @@ def detect_brake_zones(
         sample without brake and the first one with it: no bias toward
         either side.
     throttle_threshold: Throttle % below which the driver is off throttle
-        (used for coast_before).
+        (used for coast_before). Same reasoning as the brake threshold: at
+        95 % an interpolated lift-then-brake inside one raw interval reads
+        as several metres of coasting that never happened.
     merge_gap: brake runs separated by less than this [m] are one zone
         (signal flicker or a re-application mid-zone).
     min_speed_drop: zones that lose less than this [km/h] are dabs or

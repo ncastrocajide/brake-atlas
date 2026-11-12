@@ -16,9 +16,18 @@ METRIC = "bp_resid_m"  # brake-point delta corrected for entry speed
 LABEL = "Brakes later than expected for its entry speed [m]"
 
 
+MIN_ZONES = 30  # per driver, for season numbers: leaves out one-off substitutes
+
+
 def heavy(zones: pd.DataFrame, min_field: int = 10) -> pd.DataFrame:
     """Zones that are real stops, at corners most of the field has data for."""
     return zones[(zones["speed_drop"] >= HEAVY_DROP) & (zones["field_n"] >= min_field)]
+
+
+def regulars(zones: pd.DataFrame) -> pd.DataFrame:
+    """Drop drivers with fewer than MIN_ZONES zones."""
+    counts = zones["driver"].value_counts()
+    return zones[zones["driver"].map(counts) >= MIN_ZONES]
 
 
 def bootstrap_median(values: np.ndarray, n: int = 2000, seed: int = 0):
@@ -107,7 +116,10 @@ def track_map(ax, track, marks, zones, vmax=5.0, labels=True, width=4.0):
                 fontsize=7,
                 color=style.INK_2,
             )
-    ax.set_aspect("equal")
+    # A square box with equal scaling: every track fills the same panel
+    # size, so titles in a grid line up whatever the circuit's shape.
+    ax.set_box_aspect(1)
+    ax.set_aspect("equal", adjustable="datalim")
     ax.autoscale()
     ax.margins(0.04)
     ax.set_axis_off()
@@ -176,7 +188,7 @@ def track_grid(
 
 def season_heatmap(zones: pd.DataFrame, track_order: list[str], limit: float = 15.0):
     """Drivers by tracks: median brake-point delta over the track's heavy zones."""
-    z = heavy(zones)
+    z = regulars(heavy(zones))
     per = z.groupby(["driver", "track"])[METRIC].median().unstack()
     season = z.groupby("driver")[METRIC].median().sort_values(ascending=False)
     per = per.reindex(index=season.index, columns=track_order)
@@ -205,7 +217,7 @@ def season_heatmap(zones: pd.DataFrame, track_order: list[str], limit: float = 1
 
 def driver_index(zones: pd.DataFrame, teams: dict[str, str]):
     """Season median brake-point delta per driver with 95 % intervals."""
-    z = heavy(zones)
+    z = regulars(heavy(zones))
     rows = []
     for driver, g in z.groupby("driver"):
         med, lo, hi = bootstrap_median(g[METRIC].dropna().to_numpy())
@@ -221,9 +233,7 @@ def driver_index(zones: pd.DataFrame, teams: dict[str, str]):
     ax.set_yticks(y, [f"{d}  ({teams.get(d, '')})" for d in t["driver"]])
     ax.grid(axis="y", visible=False)
     ax.grid(axis="x", visible=True)
-    ax.set_xlabel(
-        "Brakes later than the field median [m], all heavy zones of the season"
-    )
+    ax.set_xlabel(LABEL + ", season median")
     return fig, ax, t
 
 
@@ -238,10 +248,17 @@ def pace_scatter(index: pd.DataFrame, pace: pd.Series):
     ax.hlines(t["pace"], t["lo"], t["hi"], color=style.GRID, linewidth=1.2)
     ax.plot(t["med"], t["pace"], "o", color=style.SERIES[0], markersize=5)
     for d, row in t.iterrows():
+        # A neighbour just to the right would collide: label on the left.
+        crowded = (
+            (t["med"] > row["med"])
+            & (t["med"] - row["med"] < 0.8)
+            & ((t["pace"] - row["pace"]).abs() < 0.08)
+        ).any()
         ax.annotate(
             d,
             (row["med"], row["pace"]),
-            xytext=(4, 3),
+            xytext=(-4, 3) if crowded else (4, 3),
+            ha="right" if crowded else "left",
             textcoords="offset points",
             fontsize=7,
             color=style.INK_2,
@@ -252,3 +269,59 @@ def pace_scatter(index: pd.DataFrame, pace: pd.Series):
     ax.set_xlabel(LABEL)
     ax.set_ylabel("Median gap to pole [%]  (faster up)")
     return fig, ax, t
+
+
+def teammate_pairs(zones: pd.DataFrame) -> pd.DataFrame:
+    """Paired teammate differences: same session, same corner, both present.
+
+    Returns one row per regular pairing with the median difference
+    (second driver minus first, alphabetical) and a 95 % bootstrap
+    interval. Pairing cancels the car, the track and the session.
+    """
+    z = regulars(heavy(zones))
+    rows = []
+    for (_, _, team), g in z.groupby(["session", "corner", "team"]):
+        if len(g) == 2:
+            a, b = sorted(g["driver"])
+            v = g.set_index("driver")[METRIC]
+            rows.append((team, a, b, v[b] - v[a]))
+    diffs = pd.DataFrame(rows, columns=["team", "a", "b", "diff"])
+    out = []
+    for (team, a, b), g in diffs.groupby(["team", "a", "b"]):
+        if len(g) >= MIN_ZONES:
+            med, lo, hi = bootstrap_median(g["diff"].dropna().to_numpy())
+            out.append((team, a, b, med, lo, hi, len(g)))
+    return pd.DataFrame(out, columns=["team", "a", "b", "med", "lo", "hi", "n"])
+
+
+def teammates(pairs: pd.DataFrame):
+    """One row per team: how much later the second driver brakes."""
+    t = pairs.sort_values("med").reset_index(drop=True)
+    fig, ax = plt.subplots(figsize=(7.5, 0.9 + 0.38 * len(t)))
+    y = np.arange(len(t))
+    ax.axvspan(-2.0, 2.0, color=style.NEUTRAL, zorder=0)
+    ax.hlines(y, t["lo"], t["hi"], color=style.SERIES[0], linewidth=1.6)
+    ax.plot(t["med"], y, "o", color=style.SERIES[0], markersize=5)
+    ax.axvline(0.0, color=style.INK_2, linewidth=0.6)
+    ax.set_yticks(y, [f"{r.b} vs {r.a}  ({r.team})" for r in t.itertuples()])
+    ax.grid(axis="y", visible=False)
+    ax.grid(axis="x", visible=True)
+    ax.set_xlabel(
+        "How much later the first-named driver brakes, same corner and session [m]"
+    )
+    return fig, ax
+
+
+def coast_by_round(zones: pd.DataFrame, order: list[str], min_coast: float = 40.0):
+    """Share of heavy stops preceded by a clear lift and coast, per round."""
+    z = heavy(zones)
+    share = (z["coast_before"] >= min_coast).groupby(z["track"]).mean().reindex(
+        order
+    ) * 100
+    fig, ax = plt.subplots(figsize=(8.5, 3.6))
+    x = np.arange(len(order))
+    ax.bar(x, share.to_numpy(), width=0.7, color=style.SERIES[0])
+    ax.set_xticks(x, order, rotation=60, ha="right")
+    ax.set_ylabel(f"Heavy stops after ≥{min_coast:.0f} m of coasting [%]")
+    ax.set_xlim(-0.6, len(order) - 0.4)
+    return fig, ax, share

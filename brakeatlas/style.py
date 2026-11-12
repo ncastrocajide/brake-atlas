@@ -117,8 +117,14 @@ def headline(ax, title: str, subtitle: str | None = None, pad: float = 0.0) -> N
 
 
 def source_note(fig, text: str = SOURCE) -> None:
-    """Source line under the plot area."""
-    fig.text(0.01, 0.005, text, ha="left", va="bottom", fontsize=7, color=INK_2)
+    """Source line below everything drawn so far (tick labels included).
+
+    Call it last, after labels and colour bars, so it lands under them.
+    """
+    renderer = fig.canvas.get_renderer()
+    bottom = min(ax.get_tightbbox(renderer).y0 for ax in fig.axes)
+    y = (bottom - 10 * fig.dpi / 72) / fig.bbox.height
+    fig.text(0.01, y, text, ha="left", va="top", fontsize=7, color=INK_2)
 
 
 def label_end(ax, x, y, text: str, color: str, dy: float = 0.0) -> None:
