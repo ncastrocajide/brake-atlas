@@ -28,3 +28,6 @@ Thumbs.db
 
 # Derived datasets (rebuilt from the FastF1 cache)
 data/
+
+# OpenF1 response cache
+.openf1_cache/

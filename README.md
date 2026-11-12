@@ -37,18 +37,28 @@ The comparisons I want to get to:
   mostly about energy harvesting
 - teammate comparisons, since that is the only way to take the car out
 
-## Data access
+## Data
 
-Since October 2026 the F1 timing archive only serves past sessions to a
-signed-in F1 TV account (Access or higher). FastF1 3.9 handles the login; you
-need your own subscription to rebuild the dataset. The test suite does not
-need any of this.
+Since October 2026 the F1 timing archive (and so FastF1) only serves past
+sessions to a signed-in F1 TV account. This repo reads the same car and
+position feed from [OpenF1](https://openf1.org), which keeps past sessions
+open, and the official corner positions from MultiViewer through FastF1's
+client. Responses are cached in `.openf1_cache/`.
+
+The feed has two problems the loader deals with. It sometimes freezes for a
+second or two (speed stops changing, throttle and brake read 104); those
+samples are dropped and any braking zone that falls in the gap is left out
+rather than measured. And it only arrives at about 4 Hz, which is the main
+limit on everything below.
 
 ## Running it
 
 ```bash
 uv sync
-uv run pytest
+uv run pytest                                 # offline, synthetic data
+uv run python examples/build_season.py        # download + build (~20 min first time)
+uv run python examples/season_atlas.py        # season figures and numbers
+uv run python examples/session_atlas.py Monza # one track
 ```
 
 ## Roadmap

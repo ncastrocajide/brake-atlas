@@ -79,3 +79,26 @@ def test_frame_carries_tags(grid, make_lap):
     assert list(frame.columns[:2]) == ["track", "driver"]
     assert len(frame) == 1
     assert frame.loc[0, "brake_point"] == BRAKE_AT
+
+
+def test_entry_speed_correction_removes_slow_car_advantage():
+    import pandas as pd
+
+    from brakeatlas.field import field_deltas
+
+    # Ten drivers whose brake point follows v^2 exactly: no one is late
+    # once entry speed is accounted for, even though slow cars brake
+    # closer to the corner.
+    v = np.linspace(290.0, 330.0, 10)
+    frame = pd.DataFrame(
+        {
+            "session": 1,
+            "corner": "T1",
+            "entry_speed": v,
+            "bp_before_mark": 20.0 + 0.012 * (v / 3.6) ** 2,
+            "min_speed": 80.0,
+        }
+    )
+    out = field_deltas(frame)
+    assert out["bp_delta_m"].abs().max() > 5.0  # raw delta sees a spread
+    assert out["bp_resid_m"].abs().max() < 1e-6  # corrected delta does not

@@ -2,10 +2,11 @@
 
 ## Data
 
-Source is FastF1 (car data, position data, circuit info). Main season is
-2026, with 2025 as a baseline for the regulation change in M5. Since
-October 2026 the timing archive needs an F1 TV login, so the dataset is
-built locally from the FastF1 cache.
+Source is OpenF1 (car data and position, the same feed as official
+timing, about 4 Hz) plus the official corner marks from MultiViewer. FastF1
+was the first choice, but since October 2026 the F1 archive needs an F1 TV
+login. Main season is 2026, with 2025 as a baseline for the regulation
+change in M5.
 
 Two kinds of laps:
 
@@ -39,9 +40,10 @@ Relative to the field, same session:
 
 | Field | Meaning |
 |---|---|
-| `bp_delta_m` | brake point − field median for that zone [m], positive = later |
-| `bp_delta_ms` | the same divided by entry speed [ms] |
-| `bp_z` | (bp − median) / (1.4826 · MAD), so different corners can be pooled |
+| `bp_before_mark` | corner mark − brake point, on the lap's own distance axis [m] |
+| `bp_delta_m` | field median of `bp_before_mark` minus the driver's [m], positive = later |
+| `bp_resid_m` | the same after fitting `bp_before_mark` against entry speed² at that corner [m] |
+| `bp_uncertainty_m` | half the spacing of the raw samples around the brake point [m] |
 | `vmin_delta` | minimum speed − field median [km/h] |
 
 Per driver, each with a bootstrap 95 % interval:
@@ -59,13 +61,24 @@ Per driver, each with a bootstrap 95 % interval:
 Zones are only compared within a session. Season numbers pool z-scores,
 never raw metres.
 
-Each lap has its own integrated odometer and drivers take different lines,
-so distances disagree by a few metres. Before computing any delta, laps are
-aligned to the official corner marks (apex-trace's landmark alignment).
+Each lap has its own integrated odometer, so raw distances disagree by
+metres. Brake points are therefore measured as metres before the corner
+mark, with the mark projected onto the same lap's line: the drift cancels.
 
-A zone gets the name of the corner mark closest to its speed minimum. If a
-zone matches no corner, or two zones claim the same one, it is flagged and
-checked by hand.
+A zone belongs to the first corner mark after its brake point. Matching on
+the speed minimum was tried first and failed in chicanes, where the minimum
+falls on either apex depending on the driver.
+
+A car that reaches a corner slower can brake later without the driver doing
+anything special, because stopping distance grows with v². At Monza the
+uncorrected numbers had the two slowest cars as the latest brakers. All
+driver comparisons use the residual after fitting brake point against entry
+speed² at each corner (`bp_resid_m`).
+
+One brake point is only known to about ±10 m at 4 Hz, about the same size
+as the differences between drivers at a single corner. Single cells of a
+heatmap are noise-level; the sampling error is random, so medians over a
+season of corners are not.
 
 Differences between teams are reported as driver plus car. Anything said
 about a driver alone comes from the teammate comparison.

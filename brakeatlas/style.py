@@ -78,14 +78,17 @@ def apply() -> None:
     )
 
 
-def headline(ax, title: str, subtitle: str | None = None) -> None:
+def headline(ax, title: str, subtitle: str | None = None, pad: float = 0.0) -> None:
     """Title (the finding) and grey subtitle (what is shown) above `ax`.
 
     Anchored to the top of the axes and to the left edge of the figure,
     so the gap to the plot stays the same whatever the figure height.
+    pad: extra points of room, e.g. for tick labels drawn on top.
     """
     anchor = {"xy": (0.01, 1.0), "xycoords": ("figure fraction", "axes fraction")}
-    lift = 30 if subtitle else 12
+    base = 12 + pad
+    lines = subtitle.count("\n") + 1 if subtitle else 0
+    lift = base + 13 * lines + (6 if subtitle else 0)
     ax.annotate(
         title,
         **anchor,
@@ -102,11 +105,12 @@ def headline(ax, title: str, subtitle: str | None = None) -> None:
         ax.annotate(
             subtitle,
             **anchor,
-            xytext=(0, 12),
+            xytext=(0, base),
             textcoords="offset points",
             ha="left",
             va="bottom",
             fontsize=9,
+            linespacing=1.3,
             color=INK_2,
             annotation_clip=False,
         )

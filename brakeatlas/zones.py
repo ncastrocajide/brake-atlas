@@ -44,8 +44,8 @@ class BrakeZone:
     entry_speed: float  # speed at the brake point [km/h]
     min_speed: float  # [km/h]
     speed_drop: float  # entry_speed - min_speed [km/h]
-    braking_distance: float  # brake_point to min_speed_point [m]
-    mean_decel_g: float  # energy-equivalent mean deceleration [g]
+    braking_distance: float  # brake_point to release_point [m]
+    mean_decel_g: float  # energy-equivalent, over the braking distance [g]
     peak_decel_g: float  # max deceleration over the zone [g]
     release_offset: float  # release_point - min_speed_point [m]
     coast_before: float  # off-throttle, off-brake run before braking [m]
@@ -62,7 +62,7 @@ def _runs(mask: np.ndarray) -> list[tuple[int, int]]:
 
 def detect_brake_zones(
     lap: Lap,
-    brake_threshold: float = 10.0,
+    brake_threshold: float = 50.0,
     throttle_threshold: float = 95.0,
     merge_gap: float = 20.0,
     min_speed_drop: float = 10.0,
@@ -70,7 +70,11 @@ def detect_brake_zones(
 ) -> list[BrakeZone]:
     """Extract the braking zones of a lap.
 
-    brake_threshold: Brake % above which the driver is braking.
+    brake_threshold: Brake % above which the driver is braking. The F1
+        brake channel is 0 or 100 and the grid interpolates between raw
+        samples, so 50 puts the brake point halfway between the last
+        sample without brake and the first one with it: no bias toward
+        either side.
     throttle_threshold: Throttle % below which the driver is off throttle
         (used for coast_before).
     merge_gap: brake runs separated by less than this [m] are one zone
@@ -117,8 +121,14 @@ def detect_brake_zones(
         if drop < min_speed_drop or i_min == start:
             continue
 
-        d_brake = float(dist[i_min] - dist[start])
-        v_e, v_m = v[start], v[i_min]
+        # Mean deceleration over the time the brake is actually on. In a
+        # chicane the speed minimum comes well after release, and
+        # averaging up to it would mix braking with rolling.
+        i_end = min(end, i_min)
+        if i_end == start:
+            i_end = i_min
+        d_brake = float(dist[i_end] - dist[start])
+        v_e, v_m = v[start], v[i_end]
 
         # Walk back from the brake point while off throttle and off brake.
         j = start - 1
@@ -139,7 +149,7 @@ def detect_brake_zones(
                 speed_drop=drop,
                 braking_distance=d_brake,
                 mean_decel_g=float((v_e**2 - v_m**2) / (2.0 * d_brake) / G),
-                peak_decel_g=float(-accel[start : i_min + 1].min() / G),
+                peak_decel_g=float(-accel[start : i_end + 1].min() / G),
                 release_offset=float(dist[end] - dist[i_min]),
                 coast_before=coast,
             )
