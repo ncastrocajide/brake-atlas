@@ -325,3 +325,84 @@ def coast_by_round(zones: pd.DataFrame, order: list[str], min_coast: float = 40.
     ax.set_ylabel(f"Heavy stops after ≥{min_coast:.0f} m of coasting [%]")
     ax.set_xlim(-0.6, len(order) - 0.4)
     return fig, ax, share
+
+
+def dots(table: pd.DataFrame, label: str, xlabel: str, band: float | None = None):
+    """Horizontal dot-and-interval chart from columns med, lo, hi."""
+    t = table.sort_values("med").reset_index(drop=True)
+    fig, ax = plt.subplots(figsize=(7.5, 0.9 + 0.28 * len(t)))
+    y = np.arange(len(t))
+    if band is not None:
+        ax.axvspan(-band, band, color=style.NEUTRAL, zorder=0)
+    ax.hlines(y, t["lo"], t["hi"], color=style.SERIES[0], linewidth=1.6)
+    ax.plot(t["med"], y, "o", color=style.SERIES[0], markersize=5)
+    if t["lo"].min() < 0 < t["hi"].max():
+        ax.axvline(0.0, color=style.INK_2, linewidth=0.6)
+    ax.set_yticks(y, t[label])
+    ax.grid(axis="y", visible=False)
+    ax.grid(axis="x", visible=True)
+    ax.set_xlabel(xlabel)
+    return fig, ax
+
+
+def two_bars(table: pd.DataFrame, names: tuple[str, str], ylabel: str):
+    """Two bars per category (columns of `table`), labelled directly."""
+    fig, ax = plt.subplots(figsize=(8.5, 3.8))
+    x = np.arange(len(table))
+    for k, col in enumerate(table.columns[:2]):
+        ax.bar(x + (k - 0.5) * 0.38, table[col], width=0.36, color=style.SERIES[k])
+        top = table[col].idxmax()
+        i = list(table.index).index(top)
+        ax.annotate(
+            names[k],
+            (i + (k - 0.5) * 0.38, table[col].max()),
+            xytext=(0, 4),
+            textcoords="offset points",
+            ha="center",
+            fontsize=8,
+            color=style.SERIES[k],
+            fontweight="bold",
+        )
+    ax.set_xticks(x, table.index, rotation=60, ha="right")
+    ax.set_ylabel(ylabel)
+    ax.set_xlim(-0.7, len(table) - 0.3)
+    return fig, ax
+
+
+def band_heatmap(grid: pd.DataFrame, limit: float = 10.0):
+    """Teams by entry-speed band, brake-point delta, value written in each cell."""
+    fig, ax = plt.subplots(figsize=(6.2, 0.9 + 0.36 * len(grid)))
+    ax.imshow(
+        grid.to_numpy(),
+        cmap=style.delta_cmap(),
+        norm=style.delta_norm(limit),
+        aspect="auto",
+    )
+    ax.grid(False)
+    for s in ax.spines.values():
+        s.set_visible(False)
+    ax.set_xticks(range(grid.shape[1]), grid.columns)
+    ax.xaxis.tick_top()
+    ax.set_yticks(range(len(grid)), grid.index)
+    for (i, j), v in np.ndenumerate(grid.to_numpy()):
+        ax.text(
+            j,
+            i,
+            f"{v:+.1f}",
+            ha="center",
+            va="center",
+            fontsize=8,
+            color=style.INK if abs(v) < 0.7 * limit else "white",
+        )
+    return fig, ax
+
+
+def trend(x, y, lo, hi, xlabel: str, ylabel: str):
+    """Binned means with an interval band."""
+    fig, ax = plt.subplots(figsize=(7.5, 4.0))
+    ax.fill_between(x, lo, hi, color=style.SERIES[0], alpha=0.15, linewidth=0)
+    ax.plot(x, y, "-o", color=style.SERIES[0], markersize=4)
+    ax.axhline(0.0, color=style.INK_2, linewidth=0.6)
+    ax.set_xlabel(xlabel)
+    ax.set_ylabel(ylabel)
+    return fig, ax

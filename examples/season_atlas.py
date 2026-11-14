@@ -9,6 +9,7 @@ from pathlib import Path
 import matplotlib
 
 matplotlib.use("Agg")
+import numpy as np  # noqa: E402
 import pandas as pd  # noqa: E402
 from scipy.stats import spearmanr  # noqa: E402
 
@@ -138,6 +139,97 @@ def main(year: int = 2026) -> None:
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"season_{year}_coast.png")
+
+    # 7. Where each team gains: brake point by entry-speed band
+    reg = plots.regulars(heavy)
+    band = pd.cut(
+        reg["entry_speed"],
+        [0, 250, 300, 400],
+        labels=["under 250 km/h", "250-300 km/h", "over 300 km/h"],
+    )
+    grid = reg.pivot_table(
+        index="team", columns=band, values=plots.METRIC, aggfunc="median", observed=True
+    )
+    grid = grid.sort_values("over 300 km/h", ascending=False)
+    fig, ax = plots.band_heatmap(grid)
+    swing = (grid["over 300 km/h"] - grid["under 250 km/h"]).sort_values()
+    style.headline(
+        ax,
+        f"The gaps open at high speed: {swing.index[-1]} gains "
+        f"{swing.iloc[-1]:.0f} m there, {swing.index[0]} loses {-swing.iloc[0]:.0f} m",
+        "Brake point against the field [m later], by the speed the stop starts "
+        "from. Change from the slowest to the fastest band in the title.",
+        pad=18,
+    )
+    style.source_note(fig, SOURCE)
+    style.save(fig, DOCS / f"season_{year}_bands.png")
+    print("\nBrake point by entry-speed band [m later]:")
+    print(grid.round(1).to_string())
+
+    # 8. Does braking later gain time? Teammates, same corner and session.
+    rows = []
+    for (_, _, _), g in reg.groupby(["session", "corner", "team"]):
+        if len(g) == 2 and g["seg_time"].notna().all():
+            a, b = g.sort_values("driver").iloc[0], g.sort_values("driver").iloc[1]
+            share = g["seg_time"].mean() / g["lap_time"].mean()
+            rows.append(
+                (
+                    a["bp_before_mark"] - b["bp_before_mark"],  # b later by [m]
+                    # Segment time difference beyond the two laps' overall pace:
+                    # they are often set in different parts of qualifying.
+                    (b["seg_time"] - a["seg_time"])
+                    - (b["lap_time"] - a["lap_time"]) * share,
+                    b["min_speed"] - a["min_speed"],
+                )
+            )
+    tm = pd.DataFrame(rows, columns=["later_m", "dt", "dvmin"])
+    # Orient every pair so "later_m" is positive: the later braker minus the other.
+    sign = np.sign(tm["later_m"]).replace(0, 1)
+    tm = tm.mul(sign, axis=0)
+    rho_tm, p_rho = spearmanr(tm["later_m"], tm["dt"])
+    bins = pd.cut(tm["later_m"], [0, 5, 10, 15, 20, 30, 60], include_lowest=True)
+    stat = (
+        tm.groupby(bins, observed=True)["dt"]
+        .apply(
+            lambda v: pd.Series(
+                plots.bootstrap_median(v.to_numpy() * 1000), index=["med", "lo", "hi"]
+            )
+        )
+        .unstack()
+    )
+    x = np.array([b.mid for b in stat.index])
+    fig, ax = plots.trend(
+        x,
+        stat["med"],
+        stat["lo"],
+        stat["hi"],
+        "How much later one teammate brakes [m]",
+        "His time through the corner vs the other [ms]",
+    )
+    far = tm[tm["later_m"] >= 15]["dt"] * 1000
+    quicker = 100 * (far < 0).mean()
+    style.headline(
+        ax,
+        "Between teammates, braking later gains a little: about "
+        f"{-far.median():.0f} ms a corner at 15 m or more",
+        f"{len(tm)} teammate pairs on the same corner and session. Time from 250 m "
+        "before the corner to 150 m after, overall lap pace removed.\n"
+        f"At 15 m or more the later braker is quicker {quicker:.0f} % of the time "
+        f"({len(far)} pairs, Spearman {rho_tm:+.2f}). Median and 95 % interval "
+        "per bin.",
+    )
+    style.source_note(fig, SOURCE)
+    style.save(fig, DOCS / f"season_{year}_teammate_time.png")
+    print(
+        f"\nTeammates, later braker's segment time: Spearman {rho_tm:+.2f} "
+        f"(p={p_rho:.4f}), {len(tm)} pairs. 15 m or more later: median "
+        f"{far.median():+.0f} ms, quicker {quicker:.0f} %, n={len(far)}"
+    )
+    print(stat.round(0).to_string())
+    print(
+        "later braker's min speed vs the other [km/h], median:",
+        round(tm["dvmin"].median(), 2),
+    )
 
     # Numbers for the write-up
     pd.set_option("display.width", 200)
