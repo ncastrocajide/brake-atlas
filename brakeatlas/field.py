@@ -15,12 +15,46 @@ from apextrace.lap import Lap
 
 from brakeatlas.zones import detect_brake_zones, zones_to_frame
 
+SEG_BEFORE, SEG_AFTER = 250.0, 150.0  # corner segment around the mark [m]
+
+
+def scaled_marks(marks: pd.DataFrame, ref_length: float, lap: Lap) -> pd.DataFrame:
+    """Marks located on a reference lap, moved onto another lap's axis.
+
+    For laps without position data (race laps are fetched without it).
+    Each lap's odometer runs slightly long or short, so mark distances
+    are scaled by the ratio of lap lengths.
+    """
+    out = marks[["Name", "Distance"]].copy()
+    out["Distance"] *= float(lap.data["Distance"].iloc[-1]) / ref_length
+    return out
+
+
+def field_marks(
+    marks: pd.DataFrame, ref_length: float, zones: pd.DataFrame
+) -> pd.DataFrame:
+    """Reference marks with each corner moved to the field's median position.
+
+    marks: Name and Distance on one reference lap. A single lap can have
+    a telemetry dropout that shifts its distance axis locally (seen at
+    Monza T4: 22 m). Where the qualifying zones give a corner's position
+    for several drivers, the median of mark_distance / lap_length over
+    them replaces the reference lap's value.
+    """
+    frac = (zones["mark_distance"] / zones["lap_length"]).groupby(zones["corner"])
+    frac = frac.median()[frac.size() >= 5]
+    out = marks[["Name", "Distance"]].copy()
+    better = out["Name"].map(frac) * ref_length
+    out["Distance"] = better.fillna(out["Distance"])
+    return out
+
 
 def lap_zones(
     lap: Lap,
     marks: pd.DataFrame,
     max_before: float = 400.0,
     gap_margin: float = 50.0,
+    located: bool = False,
     **tags: object,
 ) -> pd.DataFrame:
     """Braking zones of one lap, labelled with the corner they serve.
@@ -33,17 +67,22 @@ def lap_zones(
     drop is kept. Zones overlapping a telemetry dropout (gaps_m in the
     lap attrs, widened by gap_margin) are dropped.
 
+    located: True when `marks` already has a Distance column on this
+        lap's axis (see scaled_marks), so no X/Y projection is needed.
+
     Adds mark_distance, bp_before_mark (mark minus brake point [m],
-    smaller = later braking) and, when the lap carries raw sample
-    positions, bp_uncertainty_m: half the spacing of the raw samples
-    around the brake point.
+    smaller = later braking), lap_length, seg_time (seconds from 250 m
+    before the mark to 150 m after it, NaN if that runs off the lap)
+    and, when the lap carries raw sample positions, bp_uncertainty_m:
+    half the spacing of the raw samples around the brake point.
     """
     frame = zones_to_frame(detect_brake_zones(lap), **tags)
     if frame.empty:
         return frame
-    located = locate_marks(lap, marks).sort_values("Distance")
-    mark_d = located["Distance"].to_numpy(dtype=float)
-    names = located["Name"].to_numpy()
+    placed = marks if located else locate_marks(lap, marks)
+    placed = placed.sort_values("Distance")
+    mark_d = placed["Distance"].to_numpy(dtype=float)
+    names = placed["Name"].to_numpy()
 
     bp = frame["brake_point"].to_numpy(dtype=float)
     idx = np.searchsorted(mark_d, bp, side="left")
@@ -64,6 +103,14 @@ def lap_zones(
     frame = frame.sort_values("speed_drop", ascending=False)
     frame = frame.drop_duplicates("corner").sort_values("brake_point")
     frame["bp_before_mark"] = frame["mark_distance"] - frame["brake_point"]
+
+    dist = lap.data["Distance"].to_numpy(dtype=float)
+    time = lap.data["Time"].to_numpy(dtype=float)
+    frame["lap_length"] = dist[-1]
+    seg_in = frame["mark_distance"].to_numpy() - SEG_BEFORE
+    seg_out = frame["mark_distance"].to_numpy() + SEG_AFTER
+    seg = np.interp(seg_out, dist, time) - np.interp(seg_in, dist, time)
+    frame["seg_time"] = np.where((seg_in >= 0.0) & (seg_out <= dist[-1]), seg, np.nan)
 
     sample_d = np.asarray(lap.data.attrs.get("sample_d", []), dtype=float)
     if sample_d.size > 1:

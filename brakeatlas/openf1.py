@@ -10,6 +10,7 @@ add_distance. Each lap therefore carries its own small odometer error;
 field-level code rescales laps to a common length before comparing.
 """
 
+import gzip
 import hashlib
 import json
 import time
@@ -45,9 +46,12 @@ class OpenF1:
     def get_url(self, url: str):
         """GET any JSON URL through the same cache and pacing."""
         key = hashlib.sha1(url.encode()).hexdigest()
-        path = self.cache_dir / f"{key}.json"
+        path = self.cache_dir / f"{key}.json.gz"
+        plain = self.cache_dir / f"{key}.json"  # caches written before gzip
+        if plain.exists():
+            return json.loads(plain.read_text())
         if path.exists():
-            return json.loads(path.read_text())
+            return json.loads(gzip.decompress(path.read_bytes()))
 
         for attempt in range(5):
             try:
@@ -67,7 +71,7 @@ class OpenF1:
                     raise
                 time.sleep(2.0 * 2**attempt)
         time.sleep(self.pause)
-        path.write_text(json.dumps(data))
+        path.write_bytes(gzip.compress(json.dumps(data).encode()))
         return data
 
 
@@ -91,41 +95,56 @@ def fastest_laps(laps: pd.DataFrame) -> pd.DataFrame:
     return timed.loc[idx].sort_values("lap_duration").reset_index(drop=True)
 
 
-def load_lap(
-    client: OpenF1,
-    session_key: int,
-    driver_number: int,
-    date_start: str,
+def _seconds(dates: pd.Series) -> np.ndarray:
+    """ISO timestamps as seconds since the Unix epoch."""
+    stamps = pd.to_datetime(dates, format="ISO8601", utc=True)
+    return (stamps - pd.Timestamp(0, tz="UTC")).dt.total_seconds().to_numpy()
+
+
+def car_samples(
+    client: OpenF1, session_key: int, driver_number: int, start: datetime, end: datetime
+) -> pd.DataFrame:
+    """Raw car data of one driver between two instants, with a "t" column.
+
+    t is seconds since the Unix epoch. One call can cover a whole race
+    (about 27 000 rows), which is far cheaper than one call per lap.
+    """
+    car = pd.DataFrame(
+        client.get(
+            "car_data",
+            session_key=session_key,
+            driver_number=driver_number,
+            **{"date>=": start.isoformat(), "date<=": end.isoformat()},
+        )
+    )
+    if not car.empty:
+        car["t"] = _seconds(car["date"])
+    return car
+
+
+def build_lap(
+    car: pd.DataFrame,
+    t_start: float,
     lap_duration: float,
     label: str,
+    pos: pd.DataFrame | None = None,
     step: float = 5.0,
     max_gap: float = 0.6,
 ) -> Lap:
-    """One timed lap as a canonical Lap on a uniform distance grid.
+    """Cut one lap out of raw car samples and put it on a distance grid.
 
-    The feed sometimes freezes: speed stops updating and throttle and
-    brake read 104. Those samples are dropped. Where valid samples are
-    more than `max_gap` seconds apart, the interval is stored in
-    lap.data.attrs["gaps_m"] as (start, end) distances, so braking zones
-    inside a dropout can be excluded instead of measured.
+    car, pos: raw samples with a "t" column in seconds, same origin as
+    t_start. The feed sometimes freezes: speed stops updating and
+    throttle and brake read 104. Those samples are dropped. Where valid
+    samples are more than `max_gap` seconds apart, the interval is
+    stored in lap.data.attrs["gaps_m"] as (start, end) distances, so
+    braking zones inside a dropout can be excluded instead of measured.
     """
-    t0 = _when(date_start)
-    t1 = t0 + timedelta(seconds=lap_duration)
-    # Fetch a little either side so the lap ends can be interpolated.
-    window = {
-        "session_key": session_key,
-        "driver_number": driver_number,
-        "date>=": (t0 - timedelta(seconds=2)).isoformat(),
-        "date<=": (t1 + timedelta(seconds=2)).isoformat(),
-    }
-    car = pd.DataFrame(client.get("car_data", **window))
-    pos = pd.DataFrame(client.get("location", **window))
-    if car.empty:
-        raise ValueError(f"no car data for driver {driver_number} in {label}")
-
-    valid = (car["throttle"] <= 100) & (car["brake"] <= 100)
-    car = car[valid].reset_index(drop=True)
-    t_car = np.array([(_when(d) - t0).total_seconds() for d in car["date"]])
+    near = (car["t"] >= t_start - 2.0) & (car["t"] <= t_start + lap_duration + 2.0)
+    car = car[near & (car["throttle"] <= 100) & (car["brake"] <= 100)]
+    if len(car) < 2:
+        raise ValueError(f"no car data for {label}")
+    t_car = car["t"].to_numpy(dtype=float) - t_start
     inside = (t_car >= 0.0) & (t_car <= lap_duration)
     t_grid = np.concatenate(([0.0], t_car[inside], [lap_duration]))
 
@@ -150,8 +169,8 @@ def load_lap(
             "RPM": channel("rpm"),
         }
     )
-    if not pos.empty:
-        t_pos = np.array([(_when(d) - t0).total_seconds() for d in pos["date"]])
+    if pos is not None and not pos.empty:
+        t_pos = pos["t"].to_numpy(dtype=float) - t_start
         for axis in ("x", "y"):
             # Position comes in 1/10 m, like the FastF1 position stream.
             raw[axis.upper()] = (
@@ -169,3 +188,36 @@ def load_lap(
     wide = np.flatnonzero(np.diff(t_grid) > max_gap)
     lap.data.attrs["gaps_m"] = [(float(dist[i]), float(dist[i + 1])) for i in wide]
     return lap
+
+
+def load_lap(
+    client: OpenF1,
+    session_key: int,
+    driver_number: int,
+    date_start: str,
+    lap_duration: float,
+    label: str,
+    step: float = 5.0,
+    max_gap: float = 0.6,
+) -> Lap:
+    """Fetch one timed lap (car data and position) as a canonical Lap."""
+    t0 = _when(date_start)
+    # Fetch a little either side so the lap ends can be interpolated.
+    start = t0 - timedelta(seconds=2)
+    end = t0 + timedelta(seconds=lap_duration + 2)
+    car = car_samples(client, session_key, driver_number, start, end)
+    if car.empty:
+        raise ValueError(f"no car data for driver {driver_number} in {label}")
+    pos = pd.DataFrame(
+        client.get(
+            "location",
+            session_key=session_key,
+            driver_number=driver_number,
+            **{"date>=": start.isoformat(), "date<=": end.isoformat()},
+        )
+    )
+    if not pos.empty:
+        pos["t"] = _seconds(pos["date"])
+    return build_lap(
+        car, t0.timestamp(), lap_duration, label, pos=pos, step=step, max_gap=max_gap
+    )
