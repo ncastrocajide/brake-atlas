@@ -1,5 +1,9 @@
 # Work plan
 
+Status: M0 to M6 are done for the 18 rounds with usable data. Results are
+in [FINDINGS.md](FINDINGS.md). What is left is listed at the end of the
+README roadmap.
+
 ## Data
 
 Source is OpenF1 (car data and position, the same feed as official
