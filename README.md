@@ -41,7 +41,8 @@ driver and corner, even though it arrives 10 km/h slower.
 
 **Lift and coast is a race tool, and it did not grow in 2026.** It comes
 before 5 % of heavy race stops in the median round and under 1 % in
-qualifying. On the 17 circuits raced in both seasons it was 10 % in 2025.
+qualifying. On the 17 circuits raced in both seasons it was 10 % in 2025
+and 6 % in 2026.
 By power unit the 2026 numbers are far apart, 15 % for Red Bull Ford
 against 4 % for Mercedes, but Racing Bulls was already the highest in 2025
 with a different engine. What changed is that the Mercedes powered teams
