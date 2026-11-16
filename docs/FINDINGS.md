@@ -4,7 +4,8 @@ Data: 18 rounds from Melbourne to Interlagos. Bahrain and Jeddah were
 cancelled; Madring and Kuala Lumpur have no official corner marks yet.
 Qualifying uses each driver's fastest lap (2032 heavy braking zones).
 Races use about 15 000 clean laps (green flag, dry tyres, no pit laps,
-about 79 000 heavy zones). A heavy zone is a stop that loses 50 km/h or
+about 79 000 heavy zones). The 2025 comparison adds 23 qualifying sessions
+and about 20 500 clean race laps from that season. A heavy zone is a stop that loses 50 km/h or
 more.
 
 Two things to keep in mind throughout. A single brake point is only known
@@ -80,7 +81,7 @@ allow braking later, and peak deceleration is 0.4 g lower. Teams range from
 8 m (Cadillac) to 17 m (Ferrari); the intervals overlap, so the order
 between teams is not established.
 
-### Lift and coast belongs to the race, and to the power unit
+### Lift and coast belongs to the race
 
 ![Lift and coast, race against qualifying](race_2026_coast.png)
 
@@ -95,14 +96,27 @@ stops at Melbourne and about a fifth at Suzuka, then under 3 % from Miami
 on. That fits teams still learning to deploy the new power units over one
 lap, though each of those tracks appears only once.
 
+### The power-unit pattern, and why it is weaker than it looks
+
 ![Lift and coast by power unit](race_2026_power_unit.png)
 
-Grouped by power unit, the two Red Bull Ford teams lift and coast before
-15 % of heavy race stops (interval 11 to 21 %) and the four Mercedes
+Grouped by 2026 power unit, the two Red Bull Ford teams lift and coast
+before 15 % of heavy race stops (interval 11 to 21 %) and the four Mercedes
 powered teams before 4 % (2 to 8 %). Red Bull Ford is the highest in 12 of
-18 races. Teams that share a power unit sit together, which points at
-energy management more than at driving style. It does not say which
-approach is faster.
+18 races, and the gap is the same in free air.
+
+On its own that reads as a power-unit effect. The 2025 data says to be
+careful:
+
+![The same teams a year apart](regs_2025_2026_teams.png)
+
+Racing Bulls was already the team that coasted most in 2025, 17 % of heavy
+race stops against 20 % now, with a different power unit. Most of the "Red
+Bull Ford" number is that team's habit. What did change is at the other
+end: all four Mercedes powered teams coast less than a year ago, the works
+team by 9 points per circuit (interval 4 to 11) and Alpine, which switched
+to Mercedes power, by 3 (0.1 to 8). For McLaren and Williams the interval
+includes zero.
 
 ### Old tyres cost corner speed, not brake point
 
@@ -142,8 +156,37 @@ management, which moves a race brake point too. Odometer error is not a
 large part: at Monza the result is the same for the first corner of the lap
 and the last.
 
+## 2025 against 2026
+
+Same 17 circuits, 115 corners that are heavy braking zones in both seasons,
+field medians from qualifying. The official corner marks are in exactly the
+same place in both years, so brake points compare directly. Intervals are
+over circuits. From `examples/regs_atlas.py`.
+
+![Entry and minimum speed, 2025 against 2026](regs_2025_2026_speeds.png)
+
+The 2026 cars reach the brake point 18 km/h slower (interval 8 to 24) and
+take the corner 6 km/h slower (4 to 9). The loss on entry grows with speed:
+9 km/h in stops that started below 250 km/h in 2025, 24 km/h in stops from
+above 300. Peak deceleration is 0.64 g lower (0.54 to 0.87).
+
+![Brake point by circuit](regs_2025_2026_braking.png)
+
+Even arriving slower, the field brakes 10 m earlier (5 to 15). Less
+downforce shows twice: lower corner speed, and less deceleration to get
+down to it.
+
+![Lift and coast in races, 2025 against 2026](regs_2025_2026_coast.png)
+
+Lift and coast in races did not grow with the new rules. On the 17 circuits
+raced in both seasons the median is 10 % of heavy stops in 2025 and 6 % in
+2026, and the change per circuit is −1.0 points (−3.9 to +1.0). Melbourne
+and Miami went up; most of the rest went down. Melbourne 2025 was wet and
+has only 109 clean laps.
+
 ## What is not in here
 
+- Baku 2025 qualifying: the source has no lap table for that session.
 - Hungaroring race: the feed has holes of about 1600 m per lap, so only 232
   laps survive the filters.
 - Interlagos race: 453 laps on wet-weather tyres are excluded.

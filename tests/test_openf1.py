@@ -45,3 +45,23 @@ def test_frozen_samples_are_dropped_and_reported():
     assert lap.data["Throttle"].max() <= 100.0
     ((start, end),) = lap.data.attrs["gaps_m"]
     assert np.isclose(start, 4.75 * 60) and np.isclose(end, 6.75 * 60)
+
+
+def test_stationary_lap_is_rejected():
+    import pandas as pd
+    import pytest
+
+    from brakeatlas.openf1 import build_lap
+
+    car = pd.DataFrame(
+        {
+            "t": [0.0, 0.25, 0.5, 0.75],
+            "speed": 0,
+            "throttle": 0,
+            "brake": 0,
+            "n_gear": 0,
+            "rpm": 0,
+        }
+    )
+    with pytest.raises(ValueError):
+        build_lap(car, 0.0, 0.75, "stopped")

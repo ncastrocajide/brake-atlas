@@ -155,6 +155,9 @@ def build_lap(
     dist = np.concatenate(
         ([0.0], np.cumsum(np.diff(t_grid) * (speed[1:] + speed[:-1]) / 2.0 / 3.6))
     )
+    if dist[-1] <= 0.0:
+        # Speed reads zero for the whole lap: a car stopped under a red flag.
+        raise ValueError(f"no distance covered in {label}")
     raw = pd.DataFrame(
         {
             "Distance": dist,

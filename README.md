@@ -39,12 +39,25 @@ field in stops from below 250 km/h and 7.7 m later in stops from above
 **On Sunday the field brakes about 14 m earlier** than in qualifying, same
 driver and corner, even though it arrives 10 km/h slower.
 
-**Lift and coast follows the power unit.** In clean race laps the two Red
-Bull Ford teams coast 40 m or more before 15 % of heavy stops, the four
-Mercedes powered teams before 4 %. Red Bull Ford is the highest in 12 of 18
-races.
+**Lift and coast is a race tool, and it did not grow in 2026.** It comes
+before 5 % of heavy race stops in the median round and under 1 % in
+qualifying. On the 17 circuits raced in both seasons it was 10 % in 2025.
+By power unit the 2026 numbers are far apart, 15 % for Red Bull Ford
+against 4 % for Mercedes, but Racing Bulls was already the highest in 2025
+with a different engine. What changed is that the Mercedes powered teams
+coast less than a year ago, the works team by 9 points per circuit.
 
-![Lift and coast by power unit](docs/race_2026_power_unit.png)
+![The same teams a year apart](docs/regs_2025_2026_teams.png)
+
+**The 2026 cars are slower into and through the corners.** Against 2025 on
+the same 115 corners: 18 km/h less at the brake point, 6 km/h less at the
+apex, 0.64 g less peak deceleration, and the field brakes 10 m earlier.
+
+![Entry and minimum speed, 2025 against 2026](docs/regs_2025_2026_speeds.png)
+
+**Traffic moves the brake point.** The same driver brakes 4.5 m earlier
+with a car within 1.5 s ahead, and his lap-to-lap scatter goes from 8 m to
+10 m.
 
 **Old tyres cost corner speed, not brake point.** Per 10 laps of tyre age
 the minimum speed drops 0.5 km/h while the brake point does not move
@@ -95,6 +108,9 @@ uv run python examples/build_season.py        # qualifying: download + build
 uv run python examples/build_races.py         # races: about 400 large requests
 uv run python examples/season_atlas.py        # qualifying figures and numbers
 uv run python examples/race_atlas.py          # race figures and numbers
+uv run python examples/build_season.py 2025   # baseline season, then
+uv run python examples/build_races.py 2025    #   its races
+uv run python examples/regs_atlas.py          # 2025 against 2026
 uv run python examples/session_atlas.py Monza # one track
 cd examples && uv run python export_atlas.py  # data for docs/index.html
 ```
@@ -109,8 +125,8 @@ cd examples && uv run python export_atlas.py  # data for docs/index.html
 - [x] **M4**: driver and teammate comparisons with intervals
 - [x] **M5**: qualifying vs. race, tyres and fuel, lift and coast, speed bands
 - [x] **M6**: findings write-up and interactive page
-- [ ] Remaining rounds (Las Vegas, Lusail, Yas Marina), free-air filter for
-      race laps, 2025 as a baseline for the regulation change
+- [x] Free-air filter for race laps, 2025 as a baseline
+- [ ] Remaining rounds (Las Vegas, Lusail, Yas Marina) when they are run
 
 ## Limitations
 

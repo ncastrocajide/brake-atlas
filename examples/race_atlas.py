@@ -264,8 +264,8 @@ def main(suffix: str = "") -> None:
         f"{top.med:.0f} % against {low.med:.0f} % of heavy stops in clean race laps, "
         f"95 % interval over races. {top.pu} is the highest in {wins} of "
         f"{len(per_race)} races.\nIt is not traffic: in free air only it is "
-        f"{free_pu[top.pu]:.0f} % against {free_pu[low.pu]:.0f} %. Teams sharing a "
-        "power unit sit together.",
+        f"{free_pu[top.pu]:.0f} % against {free_pu[low.pu]:.0f} %. Check the 2025 "
+        "comparison before reading it as a power-unit effect.",
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"race_{YEAR}_power_unit.png")

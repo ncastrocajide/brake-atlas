@@ -16,10 +16,12 @@ import pandas as pd  # noqa: E402
 
 from brakeatlas import plots, stats, style  # noqa: E402
 from brakeatlas.field import field_deltas  # noqa: E402
+from brakeatlas.race import POWER_UNIT  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA, DOCS = ROOT / "data", ROOT / "docs"
 OLD, NEW = 2025, 2026
+RENAMED = {"Kick Sauber": "Audi"}
 SOURCE = "Data: OpenF1 (F1 timing feed). Same circuits and corners in both seasons."
 COLS = {
     "entry_speed": "Speed at the brake point [km/h]",
@@ -133,39 +135,88 @@ def main() -> None:
     if not (DATA / f"season_{OLD}_r.parquet").exists():
         print("\nNo race data for", OLD, "yet: run build_races.py", OLD)
         return
-    share = {}
-    teams = {}
+    races = {}
     for year in (OLD, NEW):
         r = pd.read_parquet(DATA / f"season_{year}_r.parquet")
         r = plots.regulars(r[r["speed_drop"] >= plots.HEAVY_DROP])
-        r = r.assign(lico=r["coast_before"] >= 40)
-        share[str(year)] = r.groupby("track")["lico"].mean() * 100
-        teams[year] = r.groupby("team")["lico"].mean() * 100
-        est = stats.cluster_bootstrap(r, lambda f: f["lico"].mean() * 100, n=300)
-        print(
-            f"\n{year} races: lift and coast before {est[0]:.1f} % of heavy stops "
-            f"[{est[1]:.1f}, {est[2]:.1f}], {r['track'].nunique()} races"
-        )
-        print(teams[year].sort_values().round(1).to_string())
-    coast = pd.DataFrame(share).dropna()
+        # Same entry on both sides: the 2025 Sauber team is the 2026 Audi team.
+        r = r.assign(lico=r["coast_before"] >= 40, team=r["team"].replace(RENAMED))
+        races[year] = r
+    common = sorted(set(races[OLD]["track"]) & set(races[NEW]["track"]))
+    races = {y: r[r["track"].isin(common)] for y, r in races.items()}
+    share = pd.DataFrame(
+        {str(y): r.groupby("track")["lico"].mean() * 100 for y, r in races.items()}
+    )
     order = pd.read_parquet(DATA / f"season_{NEW}_q.parquet")
     order = order.groupby("track")["round_date"].first().sort_values().index
-    coast = coast.reindex([t for t in order if t in coast.index])
-    fig, ax = plots.two_bars(
-        coast, (str(OLD), str(NEW)), "Heavy race stops after ≥40 m of coasting [%]"
+    share = share.reindex([t for t in order if t in share.index])
+    diff = (share[str(NEW)] - share[str(OLD)]).to_numpy()
+    d_med, d_lo, d_hi = plots.bootstrap_median(diff)
+    print(f"\nLift and coast in races on the {len(common)} circuits raced in both:")
+    print(share.round(1).to_string())
+    print(
+        f"median circuit {share[str(OLD)].median():.1f} % in {OLD}, "
+        f"{share[str(NEW)].median():.1f} % in {NEW}; change {d_med:+.1f} points "
+        f"[{d_lo:+.1f}, {d_hi:+.1f}]"
     )
-    ratio = coast[str(NEW)].median() / max(coast[str(OLD)].median(), 0.1)
+    fig, ax = plots.two_bars(
+        share, (str(OLD), str(NEW)), "Heavy race stops after ≥40 m of coasting [%]"
+    )
     style.headline(
         ax,
-        f"Lift and coast in races: {coast[str(OLD)].median():.0f} % of heavy stops in "
-        f"{OLD}, {coast[str(NEW)].median():.0f} % in {NEW}",
-        f"Median circuit, clean race laps, {len(coast)} circuits raced in both "
-        f"seasons ({ratio:.1f} times as often).",
+        "Lift and coast in races did not grow with the new rules: "
+        f"{share[str(OLD)].median():.0f} % of heavy stops in {OLD}, "
+        f"{share[str(NEW)].median():.0f} % in {NEW}",
+        f"Median circuit, clean race laps, {len(common)} circuits raced in both "
+        f"seasons. Change per circuit {d_med:+.1f} points [{d_lo:+.1f}, {d_hi:+.1f}].",
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"regs_{OLD}_{NEW}_coast.png")
-    print("\nPer circuit:")
-    print(coast.round(1).to_string())
+
+    # 4. The same teams a year apart: is the power-unit pattern new?
+    per = {
+        y: (r.groupby(["team", "track"])["lico"].mean() * 100).unstack("team")
+        for y, r in races.items()
+    }
+    rows = []
+    for team in sorted(set(per[OLD].columns) & set(per[NEW].columns)):
+        d = (per[NEW][team] - per[OLD][team]).dropna().to_numpy()
+        med, lo, hi = plots.bootstrap_median(d)
+        rows.append(
+            (
+                f"{team}  ({POWER_UNIT[team]} in {NEW})",
+                team,
+                med,
+                lo,
+                hi,
+                races[OLD].loc[races[OLD]["team"] == team, "lico"].mean() * 100,
+                races[NEW].loc[races[NEW]["team"] == team, "lico"].mean() * 100,
+            )
+        )
+    cols = ["label", "team", "med", "lo", "hi", str(OLD), str(NEW)]
+    by_team = pd.DataFrame(rows, columns=cols)
+    print("\nSame team, change per circuit [points] and season share [%]:")
+    print(by_team.drop(columns="label").round(1).to_string(index=False))
+    merc = by_team[by_team["team"].map(POWER_UNIT) == "Mercedes"]
+    top_old = by_team.sort_values(str(OLD)).iloc[-1]
+    fig, ax = plots.dots(
+        by_team,
+        "label",
+        f"Lift and coast in races, {NEW} minus {OLD}, per circuit [points]",
+    )
+    drop = by_team.sort_values("med").iloc[0]
+    clear = int((merc["hi"] < 0).sum())
+    style.headline(
+        ax,
+        f"{drop['team']} cut lift and coast by {-drop['med']:.0f} points from {OLD}; "
+        f"{top_old['team']} was already the highest",
+        f"Median change per circuit, 95 % interval. All {len(merc)} Mercedes-powered "
+        f"teams moved down, {clear} of them clearly.\n{top_old['team']}: "
+        f"{top_old[str(OLD)]:.0f} % of heavy race stops in {OLD} and "
+        f"{top_old[str(NEW)]:.0f} % in {NEW}, with a different power unit each year.",
+    )
+    style.source_note(fig, SOURCE)
+    style.save(fig, DOCS / f"regs_{OLD}_{NEW}_teams.png")
 
 
 if __name__ == "__main__":
