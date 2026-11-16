@@ -1,4 +1,6 @@
-"""Build the braking table for every 2026 qualifying session run so far.
+"""Build the braking table for every qualifying session of a season.
+
+Usage: uv run python examples/build_season.py [year]   (default 2026)
 
 Writes data/season_2026_q.parquet (one row per braking zone) and
 data/tracks_2026_q.parquet (the fastest lap of each session, for maps).
@@ -6,6 +8,7 @@ The first run downloads from OpenF1 into .openf1_cache/ (about a
 thousand small requests); later runs read from the cache.
 """
 
+import sys
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -15,7 +18,7 @@ from apextrace.corners import locate_marks
 from brakeatlas.build import build_session
 from brakeatlas.openf1 import OpenF1
 
-YEAR = 2026
+YEAR = int(sys.argv[1]) if len(sys.argv) > 1 else 2026
 OUT = Path(__file__).resolve().parents[1] / "data"
 
 

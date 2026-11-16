@@ -117,7 +117,6 @@ cd examples && uv run python export_atlas.py  # data for docs/index.html
 Car data arrives every 0.2-0.27 s, up to 20 m between samples at 300 km/h,
 so single brake points are rough. There is no brake pressure or steering
 channel, so nothing here is about trail braking. Qualifying uses one lap
-per driver, the fastest, which mixes Q1, Q2 and Q3 track conditions. Race
-laps are not filtered by gap to the car ahead yet. The Hungaroring race is
+per driver, the fastest, which mixes Q1, Q2 and Q3 track conditions. The Hungaroring race is
 almost absent because of holes in the feed. Lift and coast is often a team
 instruction, so I report it per team and power unit, not per driver.

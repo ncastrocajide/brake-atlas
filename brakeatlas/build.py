@@ -25,9 +25,19 @@ def build_session(
     frames, reference = [], None
     for rank, row in enumerate(best.itertuples(), start=1):
         label = f"{row.name_acronym} {session['circuit_short_name']} {session['year']}"
-        lap = load_lap(
-            client, key, int(row.driver_number), row.date_start, row.lap_duration, label
-        )
+        try:
+            lap = load_lap(
+                client,
+                key,
+                int(row.driver_number),
+                row.date_start,
+                row.lap_duration,
+                label,
+            )
+        except (ValueError, IndexError):
+            # No usable telemetry for this driver's lap: leave him out,
+            # do not lose the session.
+            continue
         if reference is None:
             reference = lap
         frames.append(

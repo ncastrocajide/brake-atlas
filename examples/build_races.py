@@ -5,7 +5,7 @@ the reference lap length per track. Writes data/season_2026_r.parquet.
 The first run downloads one request per driver and race from OpenF1
 (about 400 requests, 4-5 MB each before compression).
 
-Usage: uv run python examples/build_races.py [track ...]
+Usage: uv run python examples/build_races.py [year] [track ...]
 """
 
 import sys
@@ -18,7 +18,8 @@ from brakeatlas.field import field_marks
 from brakeatlas.openf1 import OpenF1
 from brakeatlas.race import build_race
 
-YEAR = 2026
+ARGS = sys.argv[1:]
+YEAR = int(ARGS.pop(0)) if ARGS and ARGS[0].isdigit() else 2026
 DATA = Path(__file__).resolve().parents[1] / "data"
 
 
@@ -69,4 +70,4 @@ def main(only: list[str]) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1:])
+    main(ARGS)

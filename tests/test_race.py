@@ -61,3 +61,20 @@ def test_wet_stint_is_dropped():
     stints.loc[1, "compound"] = "INTERMEDIATE"
     tagged = clean_laps(laps, stints, pits, control).set_index("lap_number")
     assert tagged.loc[8, "reason"] == "not_dry"
+
+
+def test_gap_ahead_from_line_crossings():
+    from brakeatlas.race import lap_gaps
+
+    t0 = pd.Timestamp("2026-09-06T13:00:00Z")
+    rows = []
+    # Car 1 laps in 90 s. Car 2 starts 5 s behind and closes 2 s a lap.
+    for lap in range(1, 4):
+        rows.append((1, lap, t0 + pd.to_timedelta(90.0 * (lap - 1), unit="s")))
+        rows.append((2, lap, t0 + pd.to_timedelta(5.0 + 88.0 * (lap - 1), unit="s")))
+    laps = pd.DataFrame(rows, columns=["driver_number", "lap_number", "date_start"])
+    laps["date_start"] = laps["date_start"].map(lambda t: t.isoformat())
+    gaps = lap_gaps(laps)
+    car2 = gaps[laps["driver_number"] == 2].tolist()
+    # Lap 1: 5 s at the start, 3 s at the end. Lap 2: 3 s, then 1 s.
+    assert car2[:2] == [3.0, 1.0]

@@ -16,7 +16,7 @@ import pandas as pd  # noqa: E402
 
 from brakeatlas import plots, stats, style  # noqa: E402
 from brakeatlas.field import field_marks  # noqa: E402
-from brakeatlas.race import POWER_UNIT  # noqa: E402
+from brakeatlas.race import FREE_AIR, POWER_UNIT  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
 DATA, DOCS = ROOT / "data", ROOT / "docs"
@@ -56,6 +56,7 @@ def main(suffix: str = "") -> None:
     order = list(race.groupby("track")["round_date"].first().sort_values().index)
     heavy = race[race["speed_drop"] >= plots.HEAVY_DROP]
     heavy = plots.regulars(heavy)
+    heavy = heavy.assign(free=heavy["gap_ahead"] > FREE_AIR)
     laps = race.groupby(["session", "driver", "lap_number"]).ngroups
     print(f"{len(order)} races, {laps} clean laps, {len(heavy)} heavy zones")
 
@@ -88,9 +89,40 @@ def main(suffix: str = "") -> None:
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"race_{YEAR}_margin.png")
 
-    # 2. Lap-to-lap scatter
-    pairs = stats.lap_pairs(heavy)
+    # 2. Traffic: same driver, stint and corner, laps in traffic against free air
+    one_lap = heavy.drop_duplicates(["session", "driver", "lap_number"])
+    keys = ["session", "driver", "stint", "corner"]
+    air = heavy.groupby([*keys, "free"]).agg(
+        bp=("bp_before_mark", "median"),
+        entry=("entry_speed", "median"),
+        n=("lap_number", "size"),
+    )
+    air = air.unstack("free")
+    air = air[(air[("n", True)] >= 3) & (air[("n", False)] >= 3)]
+    effect = pd.DataFrame(
+        {
+            "bp": air[("bp", False)] - air[("bp", True)],
+            "entry": air[("entry", False)] - air[("entry", True)],
+        }
+    ).reset_index()
+    t_bp = stats.cluster_bootstrap(effect, lambda f: f["bp"].median(), n=300)
+    t_entry = stats.cluster_bootstrap(effect, lambda f: f["entry"].median(), n=300)
+    print(
+        f"\nFree air (more than {FREE_AIR} s to the car ahead): "
+        f"{100 * one_lap['free'].mean():.0f} % of clean laps. In traffic the same "
+        f"driver brakes {t_bp[0]:+.1f} m earlier [{t_bp[1]:+.1f}, {t_bp[2]:+.1f}] "
+        f"and arrives {t_entry[0]:+.1f} km/h faster "
+        f"[{t_entry[1]:+.1f}, {t_entry[2]:+.1f}] ({len(effect)} stint-corners)"
+    )
+    m_free = stats.race_margin(
+        quali[quali["speed_drop"] >= plots.HEAVY_DROP], heavy[heavy["free"]]
+    )
+    print(f"Race vs qualifying in free air only: {m_free['margin_m'].median():+.1f} m")
+
+    # 3. Lap-to-lap scatter, free air only
+    pairs = stats.lap_pairs(heavy[heavy["free"]])
     field_s = stats.spread(pairs)
+    traffic_s = stats.spread(stats.lap_pairs(heavy[~heavy["free"]]))
     rows = []
     for driver, g in pairs.groupby("driver"):
         if g["session"].nunique() >= min(5, len(order)):
@@ -104,7 +136,8 @@ def main(suffix: str = "") -> None:
             )
     by_driver = pd.DataFrame(rows, columns=["label", "driver", "med", "lo", "hi", "n"])
     print(
-        f"\nLap-to-lap brake-point scatter, field: {field_s:.1f} m "
+        f"\nLap-to-lap brake-point scatter in free air: {field_s:.1f} m, in traffic "
+        f"{traffic_s:.1f} m "
         f"({len(pairs)} consecutive-lap pairs; raw sd of differences "
         f"{pairs['d'].std():.1f} m, sampling part "
         f"{np.sqrt(pairs['noise'].mean()):.1f} m)"
@@ -123,11 +156,11 @@ def main(suffix: str = "") -> None:
     )
     style.headline(
         ax,
-        f"The brake point moves about {field_s:.0f} m from lap to lap for everyone; "
-        f"only the ends ({best}, {worst}) differ",
-        "Standard deviation between consecutive clean laps of a stint, same corner, "
-        "95 % interval over races.\nIt is not only the driver: traffic and energy "
-        "management move a race brake point too.",
+        f"In free air the brake point moves {field_s:.0f} m from lap to lap, in "
+        f"traffic {traffic_s:.0f} m",
+        "Standard deviation between consecutive clean laps in free air, same stint "
+        "and corner, 95 % interval over races.\nMost drivers cannot be separated; "
+        f"only the ends of the list ({best}, {worst}) differ.",
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"race_{YEAR}_scatter.png")
@@ -219,6 +252,8 @@ def main(suffix: str = "") -> None:
     print("\nLift and coast by power unit, % of heavy race stops:")
     print(pu_table.drop(columns="label").round(1).to_string(index=False))
     print(f"{top.pu} highest in {wins} of {len(per_race)} races")
+    free_pu = by_pu[by_pu["free"]].groupby("pu")["lico"].mean() * 100
+    print("In free air only:", free_pu.round(1).to_dict())
     fig, ax = plots.dots(
         pu_table, "label", "Heavy race stops after ≥40 m of coasting [%]"
     )
@@ -228,8 +263,9 @@ def main(suffix: str = "") -> None:
         f"{low.pu} cars",
         f"{top.med:.0f} % against {low.med:.0f} % of heavy stops in clean race laps, "
         f"95 % interval over races. {top.pu} is the highest in {wins} of "
-        f"{len(per_race)} races.\nTeams sharing a power unit sit together, which "
-        "points at energy management more than at driving style.",
+        f"{len(per_race)} races.\nIt is not traffic: in free air only it is "
+        f"{free_pu[top.pu]:.0f} % against {free_pu[low.pu]:.0f} %. Teams sharing a "
+        "power unit sit together.",
     )
     style.source_note(fig, SOURCE)
     style.save(fig, DOCS / f"race_{YEAR}_power_unit.png")

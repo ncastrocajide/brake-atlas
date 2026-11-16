@@ -15,6 +15,8 @@ from brakeatlas.openf1 import OpenF1, _when, build_lap, car_samples
 
 DRY = {"SOFT", "MEDIUM", "HARD"}
 
+FREE_AIR = 1.5  # seconds to the car ahead; more than this is free air
+
 # 2026 power-unit supply, by team name as OpenF1 writes it.
 POWER_UNIT = {
     "Mercedes": "Mercedes",
@@ -99,6 +101,28 @@ def clean_laps(
     return out
 
 
+def lap_gaps(laps: pd.DataFrame) -> pd.Series:
+    """Seconds to the car ahead on the road, per lap, from line crossings.
+
+    For each lap, the time since the previous car (any car, lapped ones
+    included) crossed the line, taken at the start of the lap and at its
+    end; the smaller of the two is returned. A lap with more than about
+    1.5 s here was driven in free air, without a tow into the braking
+    zones or dirty air through the corner before them.
+    """
+    t = pd.to_datetime(laps["date_start"], format="ISO8601", utc=True)
+    order = t.sort_values()
+    at_start = order.diff().dt.total_seconds().reindex(laps.index)
+    nxt = laps.assign(gap=at_start, lap_number=laps["lap_number"] - 1)
+    at_end = laps[["driver_number", "lap_number"]].merge(
+        nxt[["driver_number", "lap_number", "gap"]],
+        on=["driver_number", "lap_number"],
+        how="left",
+    )["gap"]
+    at_end.index = laps.index
+    return pd.concat([at_start, at_end], axis=1).min(axis=1)
+
+
 def build_race(
     client: OpenF1,
     session: dict,
@@ -127,6 +151,7 @@ def build_race(
         pd.DataFrame(client.get("pit", session_key=key)),
         pd.DataFrame(client.get("race_control", session_key=key)),
     )
+    tagged["gap_ahead"] = lap_gaps(laps)
 
     built = []
     for number, own in tagged.groupby("driver_number"):
@@ -173,6 +198,7 @@ def build_race(
                         stint=row.stint,
                         compound=row.compound,
                         tyre_age=row.tyre_age,
+                        gap_ahead=row.gap_ahead,
                     ),
                 )
             )

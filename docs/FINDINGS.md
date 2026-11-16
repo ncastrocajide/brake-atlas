@@ -117,24 +117,36 @@ brake point off as the tyres wear; the loss shows at the apex. Most of the
 "later" happens in the first laps of a stint, when drivers brake early on
 new tyres.
 
+### Traffic moves the brake point
+
+A lap counts as free air when the car ahead on the road, lapped cars
+included, is more than 1.5 s away at both ends of the lap. That is 57 % of
+clean laps. Comparing the same driver in the same stint and corner, in
+traffic he brakes 4.5 m earlier (95 % interval 3.5 to 5.7 m, 3011
+stint-corners) while arriving 0.6 km/h faster from the tow.
+
+The results above hold in free air alone: the race brake point is 11.7 m
+before the qualifying one, and lift and coast is 15 % for Red Bull Ford
+against 4 % for Mercedes.
+
 ### Lap-to-lap scatter
 
 ![Lap-to-lap scatter per driver](race_2026_scatter.png)
 
 Between consecutive clean laps of a stint, the brake point at a given
-corner moves with a standard deviation of 8.9 m once sampling noise is
-removed (52 000 pairs of laps). Drivers range from 7.7 m (Piastri) to 9.7 m
-(Stroll). Both McLarens are at the consistent end. Most of the field cannot
-be separated: the intervals overlap. The number mixes the driver with
-traffic and energy management, which move a race brake point too. Odometer error is not a large part: at Monza the result is the same for
-the first corner of the lap and the last.
+corner moves with a standard deviation of 7.9 m in free air and 9.9 m in
+traffic, once sampling noise is removed. In free air drivers range from
+6.7 m (Piastri) to 8.7 m (Stroll). Most of the field cannot be separated:
+the intervals overlap. The number still mixes the driver with energy
+management, which moves a race brake point too. Odometer error is not a
+large part: at Monza the result is the same for the first corner of the lap
+and the last.
 
 ## What is not in here
 
 - Hungaroring race: the feed has holes of about 1600 m per lap, so only 232
   laps survive the filters.
 - Interlagos race: 453 laps on wet-weather tyres are excluded.
-- Free air: race laps are not filtered by gap to the car ahead yet.
 - One qualifying lap per driver, the fastest, which mixes Q1, Q2 and Q3
   track conditions.
 - No brake pressure or steering in the feed, so nothing about trail braking.
